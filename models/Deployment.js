@@ -5,7 +5,6 @@ const deploymentSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Wallet address is required'],
     trim: true,
-    match: [/^0x[a-fA-F0-9]{40}$/, 'Please provide a valid Ethereum wallet address']
   },
   contractRepoName: {
     type: String,

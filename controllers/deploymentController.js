@@ -33,6 +33,8 @@ const createDeployment = async (req, res) => {
       });
     }
 
+  // Wallet address format validation removed to allow any wallet address
+
     // Validate contract code is an object
     if (typeof contractCode !== 'object' || contractCode === null) {
       return res.status(400).json({
