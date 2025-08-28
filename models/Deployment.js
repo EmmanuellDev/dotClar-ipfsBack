@@ -14,14 +14,16 @@ const deploymentSchema = new mongoose.Schema({
     minlength: [1, 'Repository name must be at least 1 character long'],
     maxlength: [100, 'Repository name cannot exceed 100 characters']
   },
-  contractCode: {
-    type: mongoose.Schema.Types.Mixed,
-    required: [true, 'Contract code is required'],
+  contractCodeHash: {
+    type: String,
+    required: [true, 'Contract code IPFS hash is required'],
+    trim: true,
     validate: {
       validator: function(value) {
-        return value !== null && typeof value === 'object';
+        // Basic IPFS hash validation (QmXXX format or modern CID)
+        return /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|ba[a-zA-Z2-7]{57})$/.test(value);
       },
-      message: 'Contract code must be a valid JSON object'
+      message: 'Invalid IPFS hash format'
     }
   },
   version: {
@@ -40,6 +42,7 @@ const deploymentSchema = new mongoose.Schema({
 // Compound index for efficient queries
 deploymentSchema.index({ walletAddress: 1, contractRepoName: 1 });
 deploymentSchema.index({ deployedAt: -1 });
+deploymentSchema.index({ contractCodeHash: 1 }); // Index for IPFS hash lookups
 
 // Static method to find latest deployment for a repo
 deploymentSchema.statics.findLatestByRepo = function(walletAddress, contractRepoName) {

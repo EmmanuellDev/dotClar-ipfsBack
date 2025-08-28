@@ -1,26 +1,23 @@
 const Deployment = require('../models/Deployment');
 const { getNextVersion } = require('../utils/versionManager');
+const ipfsService = require('../services/ipfsService');
 
 /**
- * @desc    Compare two contract code objects for changes
- * @param   {Object} oldCode - Previous contract code
- * @param   {Object} newCode - New contract code
+ * @desc    Compare two IPFS hashes for changes
+ * @param   {string} oldHash - Previous contract code hash
+ * @param   {string} newHash - New contract code hash
  * @returns {boolean} True if there are changes, false otherwise
  */
-const hasContractCodeChanged = (oldCode, newCode) => {
-  if (!oldCode && newCode) return true;
-  if (oldCode && !newCode) return true;
-  if (!oldCode && !newCode) return false;
-
-  // Convert both objects to JSON strings for comparison
-  const oldCodeString = JSON.stringify(oldCode);
-  const newCodeString = JSON.stringify(newCode);
+const hasContractCodeChanged = (oldHash, newHash) => {
+  if (!oldHash && newHash) return true;
+  if (oldHash && !newHash) return true;
+  if (!oldHash && !newHash) return false;
   
-  return oldCodeString !== newCodeString;
+  return oldHash !== newHash;
 };
 
 /**
- * @desc    Create a new deployment with automatic versioning
+ * @desc    Create a new deployment with automatic versioning and IPFS storage
  * @route   POST /api/deploy
  * @access  Public
  */
@@ -45,6 +42,21 @@ const createDeployment = async (req, res) => {
       });
     }
 
+    // Validate contract code is an object
+    if (typeof contractCode !== 'object' || contractCode === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'Contract code must be a valid JSON object'
+      });
+    }
+
+    // Upload contract code to IPFS
+    console.log('Uploading contract code to IPFS...');
+    const contractCodeHash = await ipfsService.uploadContractCode(contractCode);
+    
+    // Pin the content to ensure it stays available
+    await ipfsService.pinContent(contractCodeHash);
+
     // Find the latest deployment for this repo
     const latestDeployment = await Deployment.findLatestByRepo(walletAddress, contractRepoName);
 
@@ -52,8 +64,8 @@ const createDeployment = async (req, res) => {
     let message;
 
     if (latestDeployment) {
-      // Check if contract code has changed
-      const codeChanged = hasContractCodeChanged(latestDeployment.contractCode, contractCode);
+      // Check if contract code has changed by comparing IPFS hashes
+      const codeChanged = hasContractCodeChanged(latestDeployment.contractCodeHash, contractCodeHash);
       
       if (!codeChanged) {
         // No change → return error instead of saving
@@ -72,10 +84,10 @@ const createDeployment = async (req, res) => {
       message = 'Deployment created successfully (first version)';
     }
 
-    // Create new deployment only if code changed or it's first deployment
+    // Create new deployment with IPFS hash
     const deployment = new Deployment({
       walletAddress,
-      contractCode,
+      contractCodeHash,
       contractRepoName,
       version: nextVersion
     });
@@ -90,6 +102,7 @@ const createDeployment = async (req, res) => {
           id: savedDeployment._id,
           walletAddress: savedDeployment.walletAddress,
           contractRepoName: savedDeployment.contractRepoName,
+          contractCodeHash: savedDeployment.contractCodeHash,
           version: savedDeployment.version,
           deployedAt: savedDeployment.deployedAt,
           codeChanged: true
@@ -106,7 +119,6 @@ const createDeployment = async (req, res) => {
     });
   }
 };
-
 
 /**
  * @desc    Get all deployments for a wallet address
@@ -140,7 +152,8 @@ const getDeploymentsByWallet = async (req, res) => {
       const repoName = dep.contractRepoName;
       if (!latestByRepo[repoName] || dep.version > latestByRepo[repoName].version) {
         latestByRepo[repoName] = {
-          latestVersion: dep.version
+          latestVersion: dep.version,
+          contractCodeHash: dep.contractCodeHash
         };
       }
     });
@@ -148,7 +161,10 @@ const getDeploymentsByWallet = async (req, res) => {
     // Build response object
     const data = { walletAddress };
     for (const repoName in latestByRepo) {
-      data[repoName] = latestByRepo[repoName].latestVersion;
+      data[repoName] = {
+        version: latestByRepo[repoName].latestVersion,
+        ipfsHash: latestByRepo[repoName].contractCodeHash
+      };
     }
 
     res.status(200).json({
@@ -167,7 +183,6 @@ const getDeploymentsByWallet = async (req, res) => {
   }
 };
 
-
 /**
  * @desc    Get deployment history for a specific repository
  * @route   GET /api/deployments/:walletAddress/:repo
@@ -176,6 +191,7 @@ const getDeploymentsByWallet = async (req, res) => {
 const getRepoDeploymentHistory = async (req, res) => {
   try {
     const { walletAddress, repo } = req.params;
+    const { includeCode } = req.query; // Optional query param to include actual contract code
 
     if (!walletAddress || !repo) {
       return res.status(400).json({
@@ -194,22 +210,36 @@ const getRepoDeploymentHistory = async (req, res) => {
     }
 
     // Add change detection to response
-    const deploymentsWithChanges = deployments.map((deploy, index) => {
-      const previousDeploy = index > 0 ? deployments[index - 1] : null;
-      const codeChanged = previousDeploy 
-        ? hasContractCodeChanged(previousDeploy.contractCode, deploy.contractCode)
-        : true; // First deployment always has changes
+    const deploymentsWithChanges = await Promise.all(
+      deployments.map(async (deploy, index) => {
+        const previousDeploy = index > 0 ? deployments[index - 1] : null;
+        const codeChanged = previousDeploy 
+          ? hasContractCodeChanged(previousDeploy.contractCodeHash, deploy.contractCodeHash)
+          : true; // First deployment always has changes
 
-      return {
-        id: deploy._id,
-        walletAddress: deploy.walletAddress,
-        contractRepoName: deploy.contractRepoName,
-        contractCode: deploy.contractCode,
-        version: deploy.version,
-        deployedAt: deploy.deployedAt,
-        codeChanged
-      };
-    });
+        const result = {
+          id: deploy._id,
+          walletAddress: deploy.walletAddress,
+          contractRepoName: deploy.contractRepoName,
+          contractCodeHash: deploy.contractCodeHash,
+          version: deploy.version,
+          deployedAt: deploy.deployedAt,
+          codeChanged
+        };
+
+        // Optionally include the actual contract code from IPFS
+        if (includeCode === 'true') {
+          try {
+            result.contractCode = await ipfsService.getContractCode(deploy.contractCodeHash);
+          } catch (error) {
+            console.error(`Failed to retrieve contract code from IPFS: ${error.message}`);
+            result.contractCodeError = 'Failed to retrieve from IPFS';
+          }
+        }
+
+        return result;
+      })
+    );
 
     res.status(200).json({
       success: true,
@@ -229,9 +259,47 @@ const getRepoDeploymentHistory = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Get contract code from IPFS hash
+ * @route   GET /api/contract/:hash
+ * @access  Public
+ */
+const getContractCode = async (req, res) => {
+  try {
+    const { hash } = req.params;
+
+    if (!hash) {
+      return res.status(400).json({
+        success: false,
+        message: 'IPFS hash is required'
+      });
+    }
+
+    const contractCode = await ipfsService.getContractCode(hash);
+
+    res.status(200).json({
+      success: true,
+      message: 'Contract code retrieved successfully',
+      data: {
+        contractCode,
+        ipfsHash: hash
+      }
+    });
+
+  } catch (error) {
+    console.error('Get contract code error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve contract code from IPFS',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createDeployment,
   getDeploymentsByWallet,
   getRepoDeploymentHistory,
+  getContractCode,
   hasContractCodeChanged // Export for testing if needed
 };
