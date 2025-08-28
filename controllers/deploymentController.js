@@ -191,7 +191,7 @@ const getDeploymentsByWallet = async (req, res) => {
 const getRepoDeploymentHistory = async (req, res) => {
   try {
     const { walletAddress, repo } = req.params;
-    const { includeCode } = req.query; // Optional query param to include actual contract code
+    const { excludeCode } = req.query; // Optional query param to exclude contract code
 
     if (!walletAddress || !repo) {
       return res.status(400).json({
@@ -209,8 +209,8 @@ const getRepoDeploymentHistory = async (req, res) => {
       });
     }
 
-    // Add change detection to response
-    const deploymentsWithChanges = await Promise.all(
+    // Add change detection and contract code to response
+    const deploymentsWithDetails = await Promise.all(
       deployments.map(async (deploy, index) => {
         const previousDeploy = index > 0 ? deployments[index - 1] : null;
         const codeChanged = previousDeploy 
@@ -227,8 +227,8 @@ const getRepoDeploymentHistory = async (req, res) => {
           codeChanged
         };
 
-        // Optionally include the actual contract code from IPFS
-        if (includeCode === 'true') {
+        // Include the actual contract code from IPFS by default
+        if (excludeCode !== 'true') {
           try {
             result.contractCode = await ipfsService.getContractCode(deploy.contractCodeHash);
           } catch (error) {
@@ -245,7 +245,7 @@ const getRepoDeploymentHistory = async (req, res) => {
       success: true,
       message: 'Deployment history retrieved successfully',
       data: {
-        deployments: deploymentsWithChanges
+        deployments: deploymentsWithDetails
       }
     });
 
