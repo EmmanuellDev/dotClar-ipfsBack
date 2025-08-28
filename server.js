@@ -41,7 +41,7 @@ app.use('*', (req, res) => {
 });
 
 // Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/contract-versioning')
+mongoose.connect(process.env.MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB');
     app.listen(PORT, () => {
