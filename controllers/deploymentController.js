@@ -33,15 +33,6 @@ const createDeployment = async (req, res) => {
       });
     }
 
-    // Validate wallet address format
-    const ethAddressRegex = /^0x[a-fA-F0-9]{40}$/;
-    if (!ethAddressRegex.test(walletAddress)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid Ethereum wallet address format'
-      });
-    }
-
     // Validate contract code is an object
     if (typeof contractCode !== 'object' || contractCode === null) {
       return res.status(400).json({
