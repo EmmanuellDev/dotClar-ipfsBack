@@ -1,40 +1,34 @@
-import express from 'express';
-import cors from 'cors';
-import bodyParser from 'body-parser';
-import dotenv from 'dotenv';
-import { connectDB } from './config/db.js';
-import deploymentRoutes from './routes/deploymentRoutes.js';
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+require('dotenv').config();
 
-// Load environment variables
-dotenv.config();
+const deploymentRoutes = require('./routes/deploymentRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '10mb' }));
-app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.use('/api', deploymentRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'Smart Contract Versioning API is running',
-    timestamp: new Date().toISOString()
-  });
+  res.status(200).json({ status: 'OK', message: 'Server is running' });
 });
 
 // Error handling middleware
-app.use((error, req, res, next) => {
-  console.error('Error:', error);
+app.use((err, req, res, next) => {
+  console.error(err.stack);
   res.status(500).json({
     success: false,
     message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
   });
 });
 
@@ -42,37 +36,21 @@ app.use((error, req, res, next) => {
 app.use('*', (req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: 'Endpoint not found'
   });
 });
 
-// Start server
-const startServer = async () => {
-  try {
-    // Connect to MongoDB
-    await connectDB();
-    
+// Database connection
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/contract-versioning')
+  .then(() => {
+    console.log('Connected to MongoDB');
     app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`🔗 API base URL: http://localhost:${PORT}/api`);
+      console.log(`Server running on port ${PORT}`);
     });
-  } catch (error) {
-    console.error('Failed to start server:', error);
+  })
+  .catch((error) => {
+    console.error('MongoDB connection error:', error);
     process.exit(1);
-  }
-};
+  });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
-  process.exit(1);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-  process.exit(1);
-});
-
-startServer();
+module.exports = app;

@@ -1,49 +1,31 @@
-import express from 'express';
-import { DeploymentController } from '../controllers/deploymentController.js';
+const express = require('express');
+const {
+  createDeployment,
+  getDeploymentsByWallet,
+  getRepoDeploymentHistory
+} = require('../controllers/deploymentController');
 
 const router = express.Router();
 
 /**
- * @route   POST /api/deploy
- * @desc    Deploy a new smart contract
+ * @route   POST /deploy
+ * @desc    Create a new deployment with automatic versioning
  * @access  Public
- * @body    { walletAddress, contractCode, contractRepoName }
  */
-router.post('/deploy', DeploymentController.deployContract);
+router.post('/deploy', createDeployment);
 
 /**
- * @route   GET /api/deployments/:walletAddress
- * @desc    Get all deployments for a wallet address
+ * @route   GET /deployments/:walletAddress
+ * @desc    Get all deployments for a specific wallet address
  * @access  Public
- * @params  walletAddress - Ethereum wallet address
- * @query   limit, offset, sort (asc|desc)
  */
-router.get('/deployments/:walletAddress', DeploymentController.getDeploymentsByWallet);
+router.get('/deployments/:walletAddress', getDeploymentsByWallet);
 
 /**
- * @route   GET /api/deployments/:walletAddress/:repo
+ * @route   GET /deployments/:walletAddress/:repo
  * @desc    Get deployment history for a specific repository
  * @access  Public
- * @params  walletAddress - Ethereum wallet address
- * @params  repo - Repository name (URL encoded)
- * @query   limit, offset, includeCode (true|false)
  */
-router.get('/deployments/:walletAddress/:repo', DeploymentController.getDeploymentsByRepo);
+router.get('/deployments/:walletAddress/:repo', getRepoDeploymentHistory);
 
-/**
- * @route   GET /api/deployment/:id
- * @desc    Get a specific deployment by ID
- * @access  Public
- * @params  id - MongoDB ObjectId of the deployment
- */
-router.get('/deployment/:id', DeploymentController.getDeploymentById);
-
-/**
- * @route   GET /api/stats/:walletAddress
- * @desc    Get deployment statistics for a wallet
- * @access  Public
- * @params  walletAddress - Ethereum wallet address
- */
-router.get('/stats/:walletAddress', DeploymentController.getWalletStats);
-
-export default router;
+module.exports = router;

@@ -1,203 +1,79 @@
 /**
- * Version Manager Utility
- * Handles semantic versioning logic for smart contract deployments
+ * Utility functions for semantic version management
  */
 
-export class VersionManager {
-  static DEFAULT_VERSION = '0.1.0';
-  static VERSION_REGEX = /^(\d+)\.(\d+)\.(\d+)$/;
-
-  /**
-   * Parse a version string into its components
-   * @param {string} version - Version string in format "MAJOR.MINOR.PATCH"
-   * @returns {Object} Object with major, minor, and patch numbers
-   */
-  static parseVersion(version) {
-    if (!version || typeof version !== 'string') {
-      throw new Error('Version must be a non-empty string');
-    }
-
-    const match = version.match(this.VERSION_REGEX);
-    if (!match) {
-      throw new Error(`Invalid version format: ${version}. Expected format: MAJOR.MINOR.PATCH`);
-    }
-
-    return {
-      major: parseInt(match[1], 10),
-      minor: parseInt(match[2], 10),
-      patch: parseInt(match[3], 10)
-    };
+/**
+ * Parses a semantic version string into its components
+ * @param {string} version - Semantic version string (e.g., "1.2.3")
+ * @returns {Object} Object with major, minor, patch components
+ */
+const parseVersion = (version) => {
+  if (!version || typeof version !== 'string') {
+    throw new Error('Version must be a non-empty string');
   }
 
-  /**
-   * Create a version string from components
-   * @param {number} major - Major version number
-   * @param {number} minor - Minor version number  
-   * @param {number} patch - Patch version number
-   * @returns {string} Version string
-   */
-  static createVersion(major, minor, patch) {
-    if (!Number.isInteger(major) || !Number.isInteger(minor) || !Number.isInteger(patch)) {
-      throw new Error('Version components must be integers');
-    }
-
-    if (major < 0 || minor < 0 || patch < 0) {
-      throw new Error('Version components cannot be negative');
-    }
-
-    return `${major}.${minor}.${patch}`;
+  const parts = version.split('.');
+  if (parts.length !== 3) {
+    throw new Error('Version must be in format MAJOR.MINOR.PATCH');
   }
 
-  /**
-   * Compare two version strings
-   * @param {string} version1 - First version
-   * @param {string} version2 - Second version
-   * @returns {number} -1 if version1 < version2, 0 if equal, 1 if version1 > version2
-   */
-  static compareVersions(version1, version2) {
-    const v1 = this.parseVersion(version1);
-    const v2 = this.parseVersion(version2);
+  const major = parseInt(parts[0], 10);
+  const minor = parseInt(parts[1], 10);
+  const patch = parseInt(parts[2], 10);
 
-    // Compare major version
-    if (v1.major !== v2.major) {
-      return v1.major > v2.major ? 1 : -1;
-    }
-
-    // Compare minor version
-    if (v1.minor !== v2.minor) {
-      return v1.minor > v2.minor ? 1 : -1;
-    }
-
-    // Compare patch version
-    if (v1.patch !== v2.patch) {
-      return v1.patch > v2.patch ? 1 : -1;
-    }
-
-    return 0; // Versions are equal
+  if (isNaN(major) || isNaN(minor) || isNaN(patch)) {
+    throw new Error('Version components must be numbers');
   }
 
-  /**
-   * Increment patch version
-   * @param {string} currentVersion - Current version string
-   * @returns {string} New version with incremented patch
-   */
-  static incrementPatch(currentVersion) {
-    const { major, minor, patch } = this.parseVersion(currentVersion);
-    return this.createVersion(major, minor, patch + 1);
+  return { major, minor, patch };
+};
+
+/**
+ * Increments the patch version of a semantic version
+ * @param {string} version - Current semantic version
+ * @returns {string} Next patch version
+ */
+const incrementPatch = (version) => {
+  const { major, minor, patch } = parseVersion(version);
+  return `${major}.${minor}.${patch + 1}`;
+};
+
+/**
+ * Gets the next version for a deployment
+ * If no previous deployment exists for the repo, returns "0.1.0"
+ * If previous deployment exists, increments the patch version
+ * @param {string} latestVersion - Latest version string or null if no previous deployment
+ * @returns {string} Next semantic version
+ */
+const getNextVersion = (latestVersion) => {
+  if (!latestVersion) {
+    return '0.1.0';
   }
 
-  /**
-   * Increment minor version (resets patch to 0)
-   * @param {string} currentVersion - Current version string
-   * @returns {string} New version with incremented minor
-   */
-  static incrementMinor(currentVersion) {
-    const { major, minor } = this.parseVersion(currentVersion);
-    return this.createVersion(major, minor + 1, 0);
+  try {
+    return incrementPatch(latestVersion);
+  } catch (error) {
+    throw new Error(`Failed to calculate next version: ${error.message}`);
   }
+};
 
-  /**
-   * Increment major version (resets minor and patch to 0)
-   * @param {string} currentVersion - Current version string
-   * @returns {string} New version with incremented major
-   */
-  static incrementMajor(currentVersion) {
-    const { major } = this.parseVersion(currentVersion);
-    return this.createVersion(major + 1, 0, 0);
+/**
+ * Validates if a version string follows semantic versioning format
+ * @param {string} version - Version string to validate
+ * @returns {boolean} True if valid, false otherwise
+ */
+const isValidVersion = (version) => {
+  try {
+    parseVersion(version);
+    return true;
+  } catch {
+    return false;
   }
+};
 
-  /**
-   * Calculate the next version for a deployment
-   * @param {string|null} currentVersion - Current version or null for first deployment
-   * @param {Object} options - Options for version calculation
-   * @param {string} options.incrementType - Type of increment ('patch', 'minor', 'major')
-   * @returns {string} Next version string
-   */
-  static calculateNextVersion(currentVersion, options = {}) {
-    const { incrementType = 'patch' } = options;
-
-    // If no current version exists, return default version
-    if (!currentVersion) {
-      return this.DEFAULT_VERSION;
-    }
-
-    try {
-      switch (incrementType) {
-        case 'major':
-          return this.incrementMajor(currentVersion);
-        case 'minor':
-          return this.incrementMinor(currentVersion);
-        case 'patch':
-        default:
-          return this.incrementPatch(currentVersion);
-      }
-    } catch (error) {
-      throw new Error(`Failed to calculate next version: ${error.message}`);
-    }
-  }
-
-  /**
-   * Validate if a version string is valid
-   * @param {string} version - Version string to validate
-   * @returns {boolean} True if valid, false otherwise
-   */
-  static isValidVersion(version) {
-    if (!version || typeof version !== 'string') {
-      return false;
-    }
-
-    try {
-      this.parseVersion(version);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get version statistics from an array of versions
-   * @param {string[]} versions - Array of version strings
-   * @returns {Object} Version statistics
-   */
-  static getVersionStats(versions) {
-    if (!Array.isArray(versions) || versions.length === 0) {
-      return {
-        total: 0,
-        latest: null,
-        oldest: null,
-        majorReleases: 0,
-        minorReleases: 0,
-        patchReleases: 0
-      };
-    }
-
-    const validVersions = versions.filter(v => this.isValidVersion(v));
-    if (validVersions.length === 0) {
-      return this.getVersionStats([]);
-    }
-
-    // Sort versions
-    const sortedVersions = validVersions.sort((a, b) => this.compareVersions(a, b));
-    
-    // Count release types (simplified - counts unique major.minor combinations)
-    const majorVersions = new Set();
-    const minorVersions = new Set();
-    
-    sortedVersions.forEach(version => {
-      const { major, minor } = this.parseVersion(version);
-      majorVersions.add(major);
-      minorVersions.add(`${major}.${minor}`);
-    });
-
-    return {
-      total: validVersions.length,
-      latest: sortedVersions[sortedVersions.length - 1],
-      oldest: sortedVersions[0],
-      majorReleases: majorVersions.size,
-      minorReleases: minorVersions.size,
-      patchReleases: validVersions.length
-    };
-  }
-}
-
-export default VersionManager;
+module.exports = {
+  parseVersion,
+  incrementPatch,
+  getNextVersion,
+  isValidVersion
+};
